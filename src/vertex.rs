@@ -5,6 +5,7 @@ pub struct Vertex {
     pub position: Vector3,
     pub transformed_position: Vector3,
     pub color: Vector3,
+    pub normal: Vector3,
 }
 
 impl Vertex {
@@ -13,6 +14,7 @@ impl Vertex {
             position,
             transformed_position: position,
             color,
+            normal: position.normalize(),
         }
     }
 }

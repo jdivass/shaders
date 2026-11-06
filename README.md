@@ -1,22 +1,23 @@
 # Proyecto 1 — Parte 2: Rellenando triángulos
 
-Renderer hecho desde cero en Rust. Carga un modelo `.obj`, recorre todos sus triángulos y los dibuja en un framebuffer propio, sin usar las funciones de Raylib para cargar o dibujar modelos 3D. Raylib se usa únicamente para el tipo `Image`/`Color`/`Vector` y para exportar la imagen final.
+Renderer hecho desde cero en Rust. Carga una esfera `.obj`, recorre sus triángulos y aplica un shader procedural por fragmento en un framebuffer propio, sin usar las funciones de Raylib para dibujar modelos 3D.
 
 ## Resultado
 
 ![Modelo renderizado](render.png)
 
+Las flechas orbitan la cámara; `W`/`S` acercan o alejan y `A`/`D` desplazan el objetivo.
+
 ## Cómo funciona
 
 ```
-Archivo OBJ -> Vértices + índices -> Triángulos -> Líneas -> Píxeles -> Imagen
+Archivo OBJ -> Vértices + índices -> Triángulos -> Fragmentos interpolados -> Shader procedural -> Framebuffer
 ```
 
-- `obj.rs`: `load_obj` lee el archivo y devuelve un `Obj` con `vertices: Vec<Vector3>` e `indices: Vec<usize>` (caras trianguladas, índices base 0).
-- `triangle.rs`: `draw_triangle` dibuja el contorno de un triángulo con tres líneas.
-- `line.rs`: algoritmo de Bresenham.
-- `framebuffer.rs`: buffer de píxeles y exportación a imagen.
-- `main.rs`: calcula la caja delimitadora del modelo, lo escala y centra usando solo `x` e `y`, y dibuja cada triángulo.
+- `object.rs`: `load_obj` lee el archivo y devuelve vértices e índices de triángulos (base 0).
+- `triangle.rs` y `rasterizer.rs`: generan fragmentos y mezclan posición y normal dentro de cada triángulo.
+- `planet.rs`: aplica el patrón rocoso con iluminación y borde atmosférico.
+- `main.rs`: carga `model/sphere.obj`, proyecta la malla y usa un buffer de profundidad para resolver superficies superpuestas.
 
 ## Cómo ejecutar
 

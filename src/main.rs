@@ -1,14 +1,15 @@
-pub mod printer;
-pub mod line;
-pub mod framebuffer;
-pub mod triangle;
-pub mod transform;
-pub mod object;
 pub mod fragment;
-pub mod vertex;
-pub mod shaders;
+pub mod framebuffer;
+pub mod line;
+pub mod object;
+pub mod planet;
 pub mod primitive;
+pub mod printer;
 pub mod rasterizer;
+pub mod shaders;
+pub mod transform;
+pub mod triangle;
+pub mod vertex;
 
 use raylib::prelude::*;
 use std::hint::black_box;
@@ -17,7 +18,7 @@ use std::time::Instant;
 use crate::framebuffer::Framebuffer;
 use crate::primitive::primitive_assembly;
 use crate::rasterizer::rasterize;
-use crate::shaders::{fragment_shader, vertex_shader};
+use crate::shaders::vertex_shader;
 use crate::triangle::TriangleMode;
 use crate::vertex::Vertex;
 
@@ -46,16 +47,14 @@ impl OrbitCamera {
 }
 
 fn main() {
-    if std::env::args().any(|arg| {
-        arg == "--benchmark" || arg == "--benchmark-triangles"
-    }) {
+    if std::env::args().any(|arg| arg == "--benchmark" || arg == "--benchmark-triangles") {
         benchmark_rasterizers();
         return;
     }
 
     let (mut window, thread) = raylib::init()
         .size(800, 600)
-    .title("3D triangle - orbit camera")
+        .title("3D triangle - orbit camera")
         .build();
 
     window.set_target_fps(60);
@@ -64,36 +63,46 @@ fn main() {
     framebuffer.set_background_color(Vector3::new(0.0, 0.0, 0.0));
     framebuffer.init_texture(&mut window, &thread);
 
-    let positions = [
-        Vector3::new(-1.2, -0.8, 0.0),
-        Vector3::new(0.0, 1.0, 0.0),
-        Vector3::new(1.2, -0.8, 0.0),
-    ];
-
-    let vertex_array: Vec<Vertex> = positions
-        .into_iter()
-        .map(|position| {
-            let vertex = Vertex::new_with_color(
-                position,
-                Vector3::new(1.0, 1.0, 1.0),
-            );
-            vertex
-        })
+    let mesh = object::load_obj("model/sphere.obj").expect("No se pudo cargar model/sphere.obj");
+    let vertex_array: Vec<Vertex> = mesh
+        .indices
+        .iter()
+        .map(|&index| Vertex::new_with_color(mesh.vertices[index], Vector3::new(1.0, 1.0, 1.0)))
         .collect();
-
-    let mut camera = OrbitCamera { yaw: 0.0, pitch: 0.0, distance: 5.0, target: Vector3::zero() };
+    let mut camera = OrbitCamera {
+        yaw: 0.0,
+        pitch: 0.0,
+        distance: 3.0,
+        target: Vector3::zero(),
+    };
 
     while !window.window_should_close() {
         let dt = window.get_frame_time();
         let orbit_speed = 1.8 * dt;
-        if window.is_key_down(KeyboardKey::KEY_LEFT) { camera.yaw -= orbit_speed; }
-        if window.is_key_down(KeyboardKey::KEY_RIGHT) { camera.yaw += orbit_speed; }
-        if window.is_key_down(KeyboardKey::KEY_UP) { camera.pitch = (camera.pitch + orbit_speed).clamp(-1.45, 1.45); }
-        if window.is_key_down(KeyboardKey::KEY_DOWN) { camera.pitch = (camera.pitch - orbit_speed).clamp(-1.45, 1.45); }
-        if window.is_key_down(KeyboardKey::KEY_W) { camera.distance = (camera.distance - 3.0 * dt).max(1.5); }
-        if window.is_key_down(KeyboardKey::KEY_S) { camera.distance += 3.0 * dt; }
-        if window.is_key_down(KeyboardKey::KEY_A) { camera.target.x -= 2.0 * dt; }
-        if window.is_key_down(KeyboardKey::KEY_D) { camera.target.x += 2.0 * dt; }
+        if window.is_key_down(KeyboardKey::KEY_LEFT) {
+            camera.yaw -= orbit_speed;
+        }
+        if window.is_key_down(KeyboardKey::KEY_RIGHT) {
+            camera.yaw += orbit_speed;
+        }
+        if window.is_key_down(KeyboardKey::KEY_UP) {
+            camera.pitch = (camera.pitch + orbit_speed).clamp(-1.45, 1.45);
+        }
+        if window.is_key_down(KeyboardKey::KEY_DOWN) {
+            camera.pitch = (camera.pitch - orbit_speed).clamp(-1.45, 1.45);
+        }
+        if window.is_key_down(KeyboardKey::KEY_W) {
+            camera.distance = (camera.distance - 3.0 * dt).max(1.5);
+        }
+        if window.is_key_down(KeyboardKey::KEY_S) {
+            camera.distance += 3.0 * dt;
+        }
+        if window.is_key_down(KeyboardKey::KEY_A) {
+            camera.target.x -= 2.0 * dt;
+        }
+        if window.is_key_down(KeyboardKey::KEY_D) {
+            camera.target.x += 2.0 * dt;
+        }
         let frame_uniforms = Uniforms {
             model_matrix: Matrix::identity(),
             camera_position: camera.position(),
@@ -129,7 +138,10 @@ fn benchmark_rasterizers() {
         .collect();
     let triangles = primitive_assembly(&transformed_vertices);
 
-    for mode in [TriangleMode::FilledBarycentric, TriangleMode::FilledScanline] {
+    for mode in [
+        TriangleMode::FilledBarycentric,
+        TriangleMode::FilledScanline,
+    ] {
         // Warm up once, outside the measured batches.
         black_box(rasterize(black_box(&triangles), mode));
 
@@ -157,11 +169,7 @@ fn benchmark_rasterizers() {
     }
 }
 
-fn render(
-    framebuffer: &mut Framebuffer,
-    uniforms: &Uniforms,
-    vertex_array: &[Vertex],
-) {
+fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: &[Vertex]) {
     // 1. Procesamiento de vértices: aplicar la misma matriz compartida a cada vértice.
     let processed_vertices: Vec<Vertex> = vertex_array
         .iter()
@@ -172,19 +180,30 @@ fn render(
     let triangles = primitive_assembly(&processed_vertices);
 
     // 3. Rasterización: reunir los fragmentos de todos los triángulos.
-    let visible_triangles: Vec<[Vertex;  3]> = triangles
+    let visible_triangles: Vec<[Vertex; 3]> = triangles
         .into_iter()
-        .filter(|triangle| triangle.iter().all(|vertex| vertex.transformed_position.z > 0.0))
+        .filter(|triangle| {
+            triangle
+                .iter()
+                .all(|vertex| vertex.transformed_position.z > 0.0)
+        })
         .collect();
     let fragments = rasterize(&visible_triangles, TriangleMode::FilledBarycentric);
 
     // 4. Procesamiento de fragmentos: escribirlos en el framebuffer.
+    let mut depth_buffer = vec![f32::INFINITY; (framebuffer.width * framebuffer.height) as usize];
     for fragment in fragments {
-        let color = fragment_shader(&fragment);
-        framebuffer.point(
-            fragment.position.x as i32,
-            fragment.position.y as i32,
-            color,
-        );
+        let x = fragment.position.x as i32;
+        let y = fragment.position.y as i32;
+        if x < 0 || y < 0 || x as u32 >= framebuffer.width || y as u32 >= framebuffer.height {
+            continue;
+        }
+        let index = y as usize * framebuffer.width as usize + x as usize;
+        if fragment.depth >= depth_buffer[index] {
+            continue;
+        }
+        depth_buffer[index] = fragment.depth;
+        let color = planet::shade(&fragment, uniforms);
+        framebuffer.point(x, y, color);
     }
 }
