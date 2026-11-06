@@ -23,9 +23,6 @@ Archivo OBJ -> Vértices + índices -> Triángulos -> Líneas -> Píxeles -> Ima
 ```
 cargo run --release
 ```
-
-El modelo se lee de `model/object.obj` y la imagen se guarda en `render.png` en la raíz del proyecto.
-
 ## Modelo utilizado
 
 `model/object.obj`

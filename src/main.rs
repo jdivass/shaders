@@ -23,6 +23,26 @@ use crate::vertex::Vertex;
 
 pub struct Uniforms {
     pub model_matrix: Matrix,
+    pub camera_position: Vector3,
+    pub camera_target: Vector3,
+}
+
+struct OrbitCamera {
+    yaw: f32,
+    pitch: f32,
+    distance: f32,
+    target: Vector3,
+}
+
+impl OrbitCamera {
+    fn position(&self) -> Vector3 {
+        let horizontal = self.distance * self.pitch.cos();
+        Vector3::new(
+            self.target.x + horizontal * self.yaw.sin(),
+            self.target.y + self.distance * self.pitch.sin(),
+            self.target.z + horizontal * self.yaw.cos(),
+        )
+    }
 }
 
 fn main() {
@@ -35,7 +55,7 @@ fn main() {
 
     let (mut window, thread) = raylib::init()
         .size(800, 600)
-        .title("Primer triangulo")
+    .title("3D triangle - orbit camera")
         .build();
 
     window.set_target_fps(60);
@@ -45,31 +65,42 @@ fn main() {
     framebuffer.init_texture(&mut window, &thread);
 
     let positions = [
-        Vector3::new(300.0, 200.0, 0.0),
-        Vector3::new(400.0, 400.0, 0.0),
-        Vector3::new(500.0, 200.0, 0.0),
+        Vector3::new(-1.2, -0.8, 0.0),
+        Vector3::new(0.0, 1.0, 0.0),
+        Vector3::new(1.2, -0.8, 0.0),
     ];
 
     let vertex_array: Vec<Vertex> = positions
         .into_iter()
         .map(|position| {
-            let mut vertex = Vertex::new_with_color(
+            let vertex = Vertex::new_with_color(
                 position,
                 Vector3::new(1.0, 1.0, 1.0),
             );
-            // Las posiciones ya están en coordenadas de pantalla.
-            vertex.transformed_position = position;
             vertex
         })
         .collect();
 
-    let uniforms = Uniforms {
-        model_matrix: Matrix::identity(),
-    };
+    let mut camera = OrbitCamera { yaw: 0.0, pitch: 0.0, distance: 5.0, target: Vector3::zero() };
 
     while !window.window_should_close() {
+        let dt = window.get_frame_time();
+        let orbit_speed = 1.8 * dt;
+        if window.is_key_down(KeyboardKey::KEY_LEFT) { camera.yaw -= orbit_speed; }
+        if window.is_key_down(KeyboardKey::KEY_RIGHT) { camera.yaw += orbit_speed; }
+        if window.is_key_down(KeyboardKey::KEY_UP) { camera.pitch = (camera.pitch + orbit_speed).clamp(-1.45, 1.45); }
+        if window.is_key_down(KeyboardKey::KEY_DOWN) { camera.pitch = (camera.pitch - orbit_speed).clamp(-1.45, 1.45); }
+        if window.is_key_down(KeyboardKey::KEY_W) { camera.distance = (camera.distance - 3.0 * dt).max(1.5); }
+        if window.is_key_down(KeyboardKey::KEY_S) { camera.distance += 3.0 * dt; }
+        if window.is_key_down(KeyboardKey::KEY_A) { camera.target.x -= 2.0 * dt; }
+        if window.is_key_down(KeyboardKey::KEY_D) { camera.target.x += 2.0 * dt; }
+        let frame_uniforms = Uniforms {
+            model_matrix: Matrix::identity(),
+            camera_position: camera.position(),
+            camera_target: camera.target,
+        };
         framebuffer.clear();
-        render(&mut framebuffer, &uniforms, &vertex_array);
+        render(&mut framebuffer, &frame_uniforms, &vertex_array);
         framebuffer.swap_buffers(&mut window, &thread);
     }
 }
@@ -89,6 +120,8 @@ fn benchmark_rasterizers() {
         .collect();
     let uniforms = Uniforms {
         model_matrix: Matrix::identity(),
+        camera_position: Vector3::new(0.0, 0.0, 5.0),
+        camera_target: Vector3::zero(),
     };
     let transformed_vertices: Vec<Vertex> = vertex_array
         .iter()
@@ -139,7 +172,11 @@ fn render(
     let triangles = primitive_assembly(&processed_vertices);
 
     // 3. Rasterización: reunir los fragmentos de todos los triángulos.
-    let fragments = rasterize(&triangles, TriangleMode::FilledBarycentric);
+    let visible_triangles: Vec<[Vertex;  3]> = triangles
+        .into_iter()
+        .filter(|triangle| triangle.iter().all(|vertex| vertex.transformed_position.z > 0.0))
+        .collect();
+    let fragments = rasterize(&visible_triangles, TriangleMode::FilledBarycentric);
 
     // 4. Procesamiento de fragmentos: escribirlos en el framebuffer.
     for fragment in fragments {
