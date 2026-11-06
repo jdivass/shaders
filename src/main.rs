@@ -28,6 +28,8 @@ pub struct Uniforms {
     pub camera_target: Vector3,
     pub screen_width: f32,
     pub screen_height: f32,
+    pub time: f32,
+    pub cloud_coverage: f32,
 }
 
 struct OrbitCamera {
@@ -87,9 +89,17 @@ fn main() {
         distance: 3.0,
         target: Vector3::zero(),
     };
+    let start_time = Instant::now();
+    let mut cloud_coverage = 0.55_f32;
 
     while !window.window_should_close() {
         let dt = window.get_frame_time();
+        if window.is_key_down(KeyboardKey::KEY_PAGE_UP) {
+            cloud_coverage = (cloud_coverage + dt * 0.35).clamp(0.0, 1.0);
+        }
+        if window.is_key_down(KeyboardKey::KEY_PAGE_DOWN) {
+            cloud_coverage = (cloud_coverage - dt * 0.35).clamp(0.0, 1.0);
+        }
         let orbit_speed = 1.8 * dt;
         if window.is_key_down(KeyboardKey::KEY_LEFT) {
             camera.yaw -= orbit_speed;
@@ -121,6 +131,8 @@ fn main() {
             camera_target: camera.target,
             screen_width: render_width as f32,
             screen_height: render_height as f32,
+            time: start_time.elapsed().as_secs_f32(),
+            cloud_coverage,
         };
         framebuffer.clear();
         render(
@@ -152,6 +164,8 @@ fn benchmark_rasterizers() {
         camera_target: Vector3::zero(),
         screen_width: 800.0,
         screen_height: 600.0,
+        time: 0.0,
+        cloud_coverage: 0.55,
     };
     let transformed_vertices: Vec<Vertex> = vertex_array
         .iter()

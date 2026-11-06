@@ -10,6 +10,8 @@ Las flechas orbitan la cámara; `W`/`S` acercan o alejan y `A`/`D` desplazan el 
 
 El planeta usa una luz direccional para separar el día y la noche. En el hemisferio nocturno aparecen luces cálidas procedurales agrupadas sobre las zonas terrestres.
 
+La respuesta a la luz varía según el terreno: los océanos tienen reflejos especulares y los continentes conservan un acabado mate. Las nubes procedurales se desplazan de forma independiente sobre la superficie; ajusta su cobertura con `Page Up` y `Page Down`.
+
 Para mantener fluido el renderizado, el framebuffer se limita a 1280×720 y se escala a pantalla completa. El perfil de desarrollo también usa optimización (`opt-level = 2`), así que `cargo run` no ejecuta el rasterizador sin optimizar.
 
 ## Cómo funciona
