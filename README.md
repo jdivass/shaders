@@ -8,6 +8,10 @@ Renderer hecho desde cero en Rust. Carga una esfera `.obj`, recorre sus triángu
 
 Las flechas orbitan la cámara; `W`/`S` acercan o alejan y `A`/`D` desplazan el objetivo.
 
+El planeta usa una luz direccional para separar el día y la noche. En el hemisferio nocturno aparecen luces cálidas procedurales agrupadas sobre las zonas terrestres.
+
+Para mantener fluido el renderizado, el framebuffer se limita a 1280×720 y se escala a pantalla completa. El perfil de desarrollo también usa optimización (`opt-level = 2`), así que `cargo run` no ejecuta el rasterizador sin optimizar.
+
 ## Cómo funciona
 
 ```

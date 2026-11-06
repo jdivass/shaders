@@ -42,15 +42,15 @@ pub fn vertex_shader(vertex: &Vertex, uniforms: &Uniforms) -> Vertex {
     let relative = world - uniforms.camera_position;
     let depth = relative.dot(forward);
     let safe_depth = depth.max(0.001);
-    let aspect = 800.0 / 600.0;
+    let aspect = uniforms.screen_width / uniforms.screen_height;
     let focal = 1.0 / (60.0_f32.to_radians() * 0.5).tan();
     let ndc_x = relative.dot(right) * focal / (aspect * safe_depth);
     let ndc_y = relative.dot(up) * focal / safe_depth;
 
     let mut result = vertex.clone();
     result.transformed_position = Vector3::new(
-        (ndc_x + 1.0) * 400.0,
-        (1.0 - ndc_y) * 300.0,
+        (ndc_x + 1.0) * uniforms.screen_width * 0.5,
+        (1.0 - ndc_y) * uniforms.screen_height * 0.5,
         depth,
     );
     result

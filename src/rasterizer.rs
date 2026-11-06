@@ -11,3 +11,15 @@ pub fn rasterize(triangles: &[[Vertex; 3]], mode: TriangleMode) -> Vec<Fragment>
 
     fragments
 }
+
+pub fn rasterize_each(
+    triangles: &[[Vertex; 3]],
+    mode: TriangleMode,
+    mut visit: impl FnMut(Fragment),
+) {
+    for tri in triangles {
+        for fragment in triangle(&tri[0], &tri[1], &tri[2], mode) {
+            visit(fragment);
+        }
+    }
+}

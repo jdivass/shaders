@@ -17,7 +17,7 @@ use std::time::Instant;
 
 use crate::framebuffer::Framebuffer;
 use crate::primitive::primitive_assembly;
-use crate::rasterizer::rasterize;
+use crate::rasterizer::{rasterize, rasterize_each};
 use crate::shaders::vertex_shader;
 use crate::triangle::TriangleMode;
 use crate::vertex::Vertex;
@@ -26,6 +26,8 @@ pub struct Uniforms {
     pub model_matrix: Matrix,
     pub camera_position: Vector3,
     pub camera_target: Vector3,
+    pub screen_width: f32,
+    pub screen_height: f32,
 }
 
 struct OrbitCamera {
@@ -54,12 +56,22 @@ fn main() {
 
     let (mut window, thread) = raylib::init()
         .size(800, 600)
-        .title("3D triangle - orbit camera")
+        .title("Planeta rocoso")
+        .fullscreen()
         .build();
 
     window.set_target_fps(60);
 
-    let mut framebuffer = Framebuffer::new(800, 600);
+    let display_width = window.get_screen_width();
+    let display_height = window.get_screen_height();
+    // Limitar el trabajo del rasterizador en pantallas de alta resolución.
+    let scale = (1280.0 / display_width as f32)
+        .min(720.0 / display_height as f32)
+        .min(1.0);
+    let render_width = (display_width as f32 * scale).round().max(1.0) as u32;
+    let render_height = (display_height as f32 * scale).round().max(1.0) as u32;
+    let mut framebuffer = Framebuffer::new(render_width, render_height);
+    let mut depth_buffer = vec![f32::INFINITY; (render_width * render_height) as usize];
     framebuffer.set_background_color(Vector3::new(0.0, 0.0, 0.0));
     framebuffer.init_texture(&mut window, &thread);
 
@@ -107,10 +119,17 @@ fn main() {
             model_matrix: Matrix::identity(),
             camera_position: camera.position(),
             camera_target: camera.target,
+            screen_width: render_width as f32,
+            screen_height: render_height as f32,
         };
         framebuffer.clear();
-        render(&mut framebuffer, &frame_uniforms, &vertex_array);
-        framebuffer.swap_buffers(&mut window, &thread);
+        render(
+            &mut framebuffer,
+            &frame_uniforms,
+            &vertex_array,
+            &mut depth_buffer,
+        );
+        framebuffer.swap_buffers(&mut window, &thread, display_width, display_height);
     }
 }
 
@@ -131,6 +150,8 @@ fn benchmark_rasterizers() {
         model_matrix: Matrix::identity(),
         camera_position: Vector3::new(0.0, 0.0, 5.0),
         camera_target: Vector3::zero(),
+        screen_width: 800.0,
+        screen_height: 600.0,
     };
     let transformed_vertices: Vec<Vertex> = vertex_array
         .iter()
@@ -169,7 +190,13 @@ fn benchmark_rasterizers() {
     }
 }
 
-fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: &[Vertex]) {
+fn render(
+    framebuffer: &mut Framebuffer,
+    uniforms: &Uniforms,
+    vertex_array: &[Vertex],
+    depth_buffer: &mut [f32],
+) {
+    depth_buffer.fill(f32::INFINITY);
     // 1. Procesamiento de vértices: aplicar la misma matriz compartida a cada vértice.
     let processed_vertices: Vec<Vertex> = vertex_array
         .iter()
@@ -188,22 +215,27 @@ fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: &[Ve
                 .all(|vertex| vertex.transformed_position.z > 0.0)
         })
         .collect();
-    let fragments = rasterize(&visible_triangles, TriangleMode::FilledBarycentric);
-
-    // 4. Procesamiento de fragmentos: escribirlos en el framebuffer.
-    let mut depth_buffer = vec![f32::INFINITY; (framebuffer.width * framebuffer.height) as usize];
-    for fragment in fragments {
-        let x = fragment.position.x as i32;
-        let y = fragment.position.y as i32;
-        if x < 0 || y < 0 || x as u32 >= framebuffer.width || y as u32 >= framebuffer.height {
-            continue;
-        }
-        let index = y as usize * framebuffer.width as usize + x as usize;
-        if fragment.depth >= depth_buffer[index] {
-            continue;
-        }
-        depth_buffer[index] = fragment.depth;
-        let color = planet::shade(&fragment, uniforms);
-        framebuffer.point(x, y, color);
-    }
+    // 4. Procesar fragmentos conforme se rasterizan para evitar un Vec enorme por cuadro.
+    rasterize_each(
+        &visible_triangles,
+        TriangleMode::FilledBarycentric,
+        |fragment| {
+            let x = fragment.position.x as i32;
+            let y = fragment.position.y as i32;
+            if x < 0
+                || y < 0
+                || x as u32 >= framebuffer.width
+                || y as u32 >= framebuffer.height
+            {
+                return;
+            }
+            let index = y as usize * framebuffer.width as usize + x as usize;
+            if fragment.depth >= depth_buffer[index] {
+                return;
+            }
+            depth_buffer[index] = fragment.depth;
+            let color = planet::shade(&fragment, uniforms);
+            framebuffer.point(x, y, color);
+        },
+    );
 }

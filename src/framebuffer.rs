@@ -25,7 +25,7 @@ impl Framebuffer {
     }
 
     pub fn clear(&mut self){
-        self.color_buffer = Image::gen_image_color(self.width.try_into().unwrap(), self.height.try_into().unwrap(), self.background_color);
+        self.color_buffer.draw_rectangle(0, 0, self.width as i32, self.height as i32, self.background_color);
     }
 
     pub fn set_pixel(&mut self, x: u32, y: u32){
@@ -60,13 +60,20 @@ impl Framebuffer {
             .expect("No se pudo crear la textura del framebuffer"));
     }
 
-    pub fn swap_buffers(&mut self, window: &mut RaylibHandle, thread: &RaylibThread) {
+    pub fn swap_buffers(&mut self, window: &mut RaylibHandle, thread: &RaylibThread, display_width: i32, display_height: i32) {
         let pixels = self.color_buffer.get_image_data_u8(false);
         if let Some(texture) = &mut self.texture {
             texture.update_texture(&pixels).expect("No se pudo actualizar la textura");
             let mut drawing = window.begin_drawing(thread);
             drawing.clear_background(Color::BLACK);
-            drawing.draw_texture(texture, 0, 0, Color::WHITE);
+            drawing.draw_texture_pro(
+                texture,
+                Rectangle::new(0.0, 0.0, self.width as f32, self.height as f32),
+                Rectangle::new(0.0, 0.0, display_width as f32, display_height as f32),
+                Vector2::zero(),
+                0.0,
+                Color::WHITE,
+            );
         }
     }
 
