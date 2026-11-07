@@ -30,6 +30,13 @@ pub struct Uniforms {
     pub screen_height: f32,
     pub time: f32,
     pub cloud_coverage: f32,
+    pub planet_kind: PlanetKind,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum PlanetKind {
+    Rocky,
+    GasGiant,
 }
 
 struct OrbitCamera {
@@ -91,9 +98,16 @@ fn main() {
     };
     let start_time = Instant::now();
     let mut cloud_coverage = 0.55_f32;
+    let mut planet_kind = PlanetKind::Rocky;
 
     while !window.window_should_close() {
         let dt = window.get_frame_time();
+        if window.is_key_pressed(KeyboardKey::KEY_ONE) {
+            planet_kind = PlanetKind::Rocky;
+        }
+        if window.is_key_pressed(KeyboardKey::KEY_TWO) {
+            planet_kind = PlanetKind::GasGiant;
+        }
         if window.is_key_down(KeyboardKey::KEY_PAGE_UP) {
             cloud_coverage = (cloud_coverage + dt * 0.35).clamp(0.0, 1.0);
         }
@@ -133,6 +147,7 @@ fn main() {
             screen_height: render_height as f32,
             time: start_time.elapsed().as_secs_f32(),
             cloud_coverage,
+            planet_kind,
         };
         framebuffer.clear();
         render(
@@ -166,6 +181,7 @@ fn benchmark_rasterizers() {
         screen_height: 600.0,
         time: 0.0,
         cloud_coverage: 0.55,
+        planet_kind: PlanetKind::Rocky,
     };
     let transformed_vertices: Vec<Vertex> = vertex_array
         .iter()

@@ -1,4 +1,4 @@
-use crate::{Uniforms, fragment::Fragment};
+use crate::{PlanetKind, Uniforms, fragment::Fragment};
 use raylib::prelude::*;
 
 fn mix(a: Vector3, b: Vector3, t: f32) -> Vector3 {
@@ -49,6 +49,20 @@ fn fbm(mut p: Vector3) -> f32 {
     value / total * 0.5 + 0.5
 }
 
+fn warp_into_vortex(position: Vector3, center: Vector3) -> Vector3 {
+    let axis = center.normalize();
+    let radial_component = position.dot(axis);
+    let tangent = position - axis * radial_component;
+    let radius = tangent.dot(tangent).sqrt();
+    let influence = 1.0 - smoothstep(0.0, 0.40, radius);
+    let angle = influence * 10.05;
+    let (sine, cosine) = angle.sin_cos();
+
+    (position * cosine)
+        + (axis.cross(position) * sine)
+        + (axis * (radial_component * (1.0 - cosine)))
+}
+
 pub fn shade(fragment: &Fragment, uniforms: &Uniforms) -> Vector3 {
     let p = fragment.object_position;
     let n = fragment.normal.normalize();
@@ -58,6 +72,9 @@ pub fn shade(fragment: &Fragment, uniforms: &Uniforms) -> Vector3 {
     let diffuse = sun_facing.max(0.0);
     let night = 1.0 - smoothstep(-0.12, 0.12, sun_facing);
     let view = (uniforms.camera_position - p).normalize();
+    if uniforms.planet_kind == PlanetKind::GasGiant {
+        return shade_gas_giant(p, n, diffuse, view, uniforms);
+    }
     let half_vector = (sun_direction + view).normalize();
     let highlight = n.dot(half_vector).max(0.0);
     // Potencia 32 con multiplicaciones para evitar un powf por fragmento.
@@ -107,4 +124,51 @@ pub fn shade(fragment: &Fragment, uniforms: &Uniforms) -> Vector3 {
     let cloud_opacity = cloud_mask * 0.78;
 
     mix(surface_color, cloud_color, cloud_opacity)
+}
+
+fn shade_gas_giant(
+    p: Vector3,
+    n: Vector3,
+    diffuse: f32,
+    view: Vector3,
+    uniforms: &Uniforms,
+) -> Vector3 {
+    let drift = Vector3::new(uniforms.time * 0.035, 0.0, uniforms.time * 0.012);
+    let storm_center = Vector3::new(0.24, 0.17, 0.96).normalize();
+    let warped_normal = warp_into_vortex(n, storm_center);
+    let warped_position = warped_normal * p.dot(n).max(0.0);
+
+    // La deformación afecta las bandas y su ruido, no solo el color de la tormenta.
+    let turbulence = noise(warped_position * 6.0 + drift);
+    let wave = (warped_position.y * 30.0 + turbulence * 3.0 + uniforms.time * 0.035).sin() * 0.5 + 0.5;
+    let band = smoothstep(0.34, 0.66, wave);
+    let mut color = mix(
+        Vector3::new(0.003, 0.12, 0.35),
+        Vector3::new(0.2, 0.55, 0.9),
+        band,
+    );
+
+    let fine_wave = (warped_position.y * 78.0 + noise(warped_position * 11.0 + drift) * 2.0).sin() * 1.0 + 1.0;
+    color = mix(color, Vector3::new(1.0, 1.0, 1.0), smoothstep(0.91, 0.98, fine_wave) * 0.45);
+
+    // Una tormenta ovalada permanece en coordenadas del planeta mientras las bandas fluyen.
+    let storm_distance = 1.0 - n.dot(storm_center).clamp(-1.0, 1.0);
+    let storm = 1.0 - smoothstep(0.025, 0.075, storm_distance);
+    let storm_color = Vector3::new(0.369, 0.369, 0.388);
+    color = mix(color, storm_color, storm * 0.9);
+
+    let sun_direction = Vector3::new(-0.55, 0.32, 0.77).normalize();
+    let half_vector = (sun_direction + view).normalize();
+    let highlight = n.dot(half_vector).max(0.0);
+    let highlight2 = highlight * highlight;
+    let highlight4 = highlight2 * highlight2;
+    let highlight8 = highlight4 * highlight4;
+    let highlight16 = highlight8 * highlight8;
+    let specular = highlight16 * highlight16;
+    let rim_factor = 1.0 - n.dot(view).max(0.0);
+    let rim = rim_factor * rim_factor * rim_factor;
+
+    color * (0.035 + diffuse * 0.965)
+        + Vector3::new(1.0, 0.78, 0.5) * (specular * diffuse * 0.35)
+        + Vector3::new(0.12, 0.2, 0.34) * (rim * 0.35)
 }
