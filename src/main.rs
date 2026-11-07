@@ -37,6 +37,7 @@ pub struct Uniforms {
 pub enum PlanetKind {
     Rocky,
     GasGiant,
+    Star,
 }
 
 struct OrbitCamera {
@@ -107,6 +108,9 @@ fn main() {
         }
         if window.is_key_pressed(KeyboardKey::KEY_TWO) {
             planet_kind = PlanetKind::GasGiant;
+        }
+        if window.is_key_pressed(KeyboardKey::KEY_THREE) {
+            planet_kind = PlanetKind::Star;
         }
         if window.is_key_down(KeyboardKey::KEY_PAGE_UP) {
             cloud_coverage = (cloud_coverage + dt * 0.35).clamp(0.0, 1.0);
@@ -248,7 +252,7 @@ fn render(
     // 4. Procesar fragmentos conforme se rasterizan para evitar un Vec enorme por cuadro.
     rasterize_each(
         &visible_triangles,
-        TriangleMode::FilledBarycentric,
+        TriangleMode::FilledScanline,
         |fragment| {
             let x = fragment.position.x as i32;
             let y = fragment.position.y as i32;

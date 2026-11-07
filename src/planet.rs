@@ -72,6 +72,9 @@ pub fn shade(fragment: &Fragment, uniforms: &Uniforms) -> Vector3 {
     let diffuse = sun_facing.max(0.0);
     let night = 1.0 - smoothstep(-0.12, 0.12, sun_facing);
     let view = (uniforms.camera_position - p).normalize();
+    if uniforms.planet_kind == PlanetKind::Star {
+        return shade_star(p, n, view, uniforms);
+    }
     if uniforms.planet_kind == PlanetKind::GasGiant {
         return shade_gas_giant(p, n, diffuse, view, uniforms);
     }
@@ -124,6 +127,30 @@ pub fn shade(fragment: &Fragment, uniforms: &Uniforms) -> Vector3 {
     let cloud_opacity = cloud_mask * 0.78;
 
     mix(surface_color, cloud_color, cloud_opacity)
+}
+
+fn shade_star(p: Vector3, n: Vector3, view: Vector3, uniforms: &Uniforms) -> Vector3 {
+    let time = uniforms.time;
+    let drift = Vector3::new(time * 0.03, time * 0.02, -time * 0.025);
+    let plasma = fbm(p * 5.0 + drift);
+    let warp = (p.x * 11.0 + time).sin() * (p.z * 13.0 - time * 0.7).sin();
+    let wave = (p.y * 24.0 + warp * 3.0 + time * 1.5).sin() * 0.5 + 0.5;
+    let cells = (p.x * 31.0 + p.z * 17.0 + time).sin() * 0.5 + 0.5;
+    let heat = (wave * 0.65 + cells * 0.2 + plasma * 0.15).clamp(0.0, 1.0);
+    let heat = heat * heat.sqrt();
+    let color = mix(
+        Vector3::new(0.42, 0.012, 0.001),
+        Vector3::new(1.0, 0.82, 0.24),
+        heat,
+    );
+    let eruptions = smoothstep(0.58, 0.9, noise(p * 16.0 + drift));
+    let facing = n.dot(view).max(0.0);
+    let limb = 1.0 - facing;
+    let limb = limb * limb;
+
+    color * (0.58 + facing * 0.42)
+        + Vector3::new(1.0, 0.25, 0.025) * (eruptions * 0.24)
+        + Vector3::new(1.0, 0.28, 0.035) * (limb * 0.22)
 }
 
 fn shade_gas_giant(
