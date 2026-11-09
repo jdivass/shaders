@@ -1,70 +1,88 @@
-# Proyecto 1 — Parte 2: Rellenando triángulos
+# Planetas y estrella con shaders procedurales
 
-Renderer hecho desde cero en Rust. Carga una esfera `.obj`, recorre sus triángulos y aplica un shader procedural por fragmento en un framebuffer propio, sin usar las funciones de Raylib para dibujar modelos 3D.
+Renderer 3D hecho en Rust. Carga una esfera desde un archivo OBJ y colorea sus fragmentos con shaders procedurales propios. Raylib gestiona la ventana, la imagen y la textura; la transformación, el ensamblado, la rasterización, la iluminación y los patrones se implementan en el proyecto.
 
-## Resultado
+## Repositorio
 
-![Modelo renderizado](render.png)
+[github.com/jdivass/shaders](https://github.com/jdivass/shaders)
 
-Pulsa `1` para ver el planeta rocoso, `2` para el gigante gaseoso y `3` para la estrella procedural. Las flechas orbitan la cámara; `W`/`S` acercan o alejan y `A`/`D` desplazan el objetivo.
+El repositorio incluye el código Rust, `Cargo.toml` y `Cargo.lock`, y la malla necesaria en `model/sphere.obj`.
 
-El planeta usa una luz direccional para separar el día y la noche. En el hemisferio nocturno aparecen luces cálidas procedurales agrupadas sobre las zonas terrestres.
+## Compilar y ejecutar
 
-La respuesta a la luz varía según el terreno: los océanos tienen reflejos especulares y los continentes conservan un acabado mate. Las nubes procedurales se desplazan de forma independiente sobre la superficie; ajusta su cobertura con `Page Up` y `Page Down`.
+Desde la carpeta `shaders`:
 
-Para mantener fluido el renderizado, el framebuffer se limita a 1280×720 y se escala a pantalla completa. El perfil de desarrollo también usa optimización (`opt-level = 2`), así que `cargo run` no ejecuta el rasterizador sin optimizar.
-
-## Cómo funciona
-
-```
-Archivo OBJ -> Vértices + índices -> Triángulos -> Fragmentos interpolados -> Shader procedural -> Framebuffer
-```
-
-- `object.rs`: `load_obj` lee el archivo y devuelve vértices e índices de triángulos (base 0).
-- `triangle.rs` y `rasterizer.rs`: generan fragmentos y mezclan posición y normal dentro de cada triángulo.
-- `planet.rs`: aplica el patrón rocoso con iluminación y borde atmosférico.
-- `main.rs`: carga `model/sphere.obj`, proyecta la malla y usa un buffer de profundidad para resolver superficies superpuestas.
-
-## Cómo ejecutar
-
-```
+```bash
 cargo run --release
 ```
-## Modelo utilizado
 
-`model/object.obj`
+La ventana se centra en el monitor actual y ocupa el 70% de su ancho y el 70% de su alto. El renderer limita su resolución interna a 1280×720 y escala la imagen para ajustarla a la ventana.
 
-## Algoritmos de rellenado
+## Selección y controles
 
-### Algoritmo 1: Coordenadas baricéntricas
+- `1`: planeta rocoso.
+- `2`: gigante gaseoso.
+- `3`: estrella.
+- `Page Up` / `Page Down`: aumenta o reduce la cobertura de nubes del planeta rocoso.
+- Flechas: orbita la cámara.
+- `W` / `S`: acerca o aleja la cámara.
+- `A` / `D`: desplaza el objetivo horizontalmente.
 
-Se basa en calcular un cuadro delimitador (bounding box) alrededor del triángulo y evaluar, para cada píxel dentro de él, si pertenece al interior de la figura usando pesos baricéntricos.
+## Cuerpos celestes
 
-### Algoritmo 2: Lineas horizontales
+### Planeta rocoso
 
-Avanza una fila a la vez, calcula las intersecciones de la fila con los lados del triángulo y genera fragmentos entre los extremos del tramo interior.
+![Captura del planeta rocoso](assets/rocky.png)
+Usa ruido 3D interpolado y una suma de octavas (`fbm`) para crear variaciones de altura. Un corte suave mezcla océano y tierra; otro umbral añade nieve en las zonas altas. Una luz direccional define día y noche. Las ciudades se forman al combinar una máscara de tierra, regiones de ruido de baja frecuencia y puntos de alta frecuencia; solo se ven en el hemisferio nocturno. El océano tiene reflejos especulares y los continentes una respuesta mate.
 
+Las nubes combinan ruido a escalas `6` y `12` con pesos `0.65` y `0.35`. Su desplazamiento depende del tiempo y no altera el patrón del terreno. La misma máscara, desplazada según la dirección de la luz, produce las sombras sobre la superficie.
 
-## Resultados del benchmark
+Parámetros principales en `src/planet.rs`:
 
+- `fbm(p * 4.0)`: escala del patrón continental. Aumentarla crea formas más pequeñas.
+- `smoothstep(0.48, 0.52, height)`: umbral y suavidad de las costas.
+- `smoothstep(0.65, 0.78, height)`: umbral de nieve.
+- `cloud_coverage`: cobertura ajustada con Page Up y Page Down.
+- `0.08` en `shadow_offset` y `0.58` en `direct_light`: desplazamiento e intensidad de las sombras de nubes.
 
-| Algoritmo | Mediana de 7 muestras de 100 rasterizaciones | Fragmentos por rasterización |
-| --------- | --------------------------------------------- | ---------------------------- |
-| Baricéntrico | 851.636097 ms | 129030 |
-| Scanline | 680.072074 ms | 129030 |
+### Gigante gaseoso
 
-Las mediciones corresponden a un triángulo grande y dependen del equipo y de la carga del sistema.
+![Captura del gigante gaseoso](assets/gas-giant.png)
 
-## Perfilado
+Las bandas nacen de una onda basada en la coordenada vertical de la esfera, deformada por ruido 3D. Un segundo patrón genera bandas finas. Una tormenta ovalada se coloca sobre la superficie; alrededor de ella, una rotación localizada de las coordenadas curva las bandas y su ruido para formar el vórtice. El patrón cambia con el tiempo para simular movimiento atmosférico.
 
-El modo `--benchmark-triangles` rasteriza repetidamente el triángulo y termina sin abrir la ventana. Para medirlo con `cargo-flamegraph` y `perf` instalados:
+Parámetros principales en `shade_gas_giant`, dentro de `src/planet.rs`:
 
-```bash
-cargo flamegraph -- --benchmark-triangles
+- `warped_position.y * 30.0`: cantidad y escala de las bandas anchas.
+- `turbulence * 3.0`: deformación irregular de las bandas.
+- `warped_position.y * 78.0`: frecuencia de las bandas finas.
+- Los dos `Vector3` del `mix` principal: colores alternos de las bandas, en componentes RGB normalizados entre `0.0` y `1.0`.
+- `storm_center`: ubicación del vórtice; `0.40` y `10.05` en `warp_into_vortex` controlan el radio de influencia y la rotación.
+- `storm_color`: color del centro de la tormenta.
+
+### Estrella
+
+![Captura de la estrella](assets/star.png)
+
+La estrella es autoluminosa y no usa el ciclo de día y noche de los planetas. Combina ondas deformadas, celdas sinusoidales y ruido en un valor de calor que mezcla tonos rojos y amarillos. Otra máscara de ruido crea zonas de erupción y un gradiente en el borde da volumen a la esfera. Los patrones se animan con el tiempo.
+
+Parámetros principales en `shade_star`, dentro de `src/planet.rs`:
+
+- `fbm(p * 5.0 + drift)`: escala y movimiento del plasma.
+- `p.y * 24.0` y `p.x * 31.0 + p.z * 17.0`: frecuencia de ondas y celdas.
+- Los dos `Vector3` del `mix`: colores fríos y calientes de la superficie.
+- `noise(p * 16.0 + drift)`: tamaño de las zonas de erupción.
+
+## Animación
+
+Los patrones de la estrella, las bandas del gigante gaseoso, el vórtice y las nubes están animados. Todas estas animaciones pueden verse en el siguiente video:
+
+![Animación de los shaders](https://youtu.be/KcPtXhpP1kQ)
+
+## Cómo funciona el renderer
+
+```text
+model/sphere.obj → vértices → transformación y proyección → triángulos → fragmentos → shader → framebuffer
 ```
 
-El comando genera `flamegraph.svg` en la raíz del proyecto.
-
-```bash
-cargo run --release -- --benchmark-triangles
-```
+`src/object.rs` carga y triangula la malla OBJ. `src/shaders.rs` proyecta los vértices. `src/triangle.rs` y `src/rasterizer.rs` generan fragmentos e interpolan sus atributos. `src/planet.rs` calcula los patrones, colores e iluminación de cada cuerpo celeste. `src/framebuffer.rs` almacena los píxeles y los presenta en la ventana.

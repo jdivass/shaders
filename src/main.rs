@@ -67,9 +67,18 @@ fn main() {
     let (mut window, thread) = raylib::init()
         .size(800, 600)
         .title("Planeta rocoso")
-        .fullscreen()
         .build();
 
+    let monitor = raylib::core::window::get_current_monitor();
+    let monitor_width = raylib::core::window::get_monitor_width(monitor);
+    let monitor_height = raylib::core::window::get_monitor_height(monitor);
+    let window_width = (monitor_width as f32 * 0.7).round() as i32;
+    let window_height = (monitor_height as f32 * 0.7).round() as i32;
+    window.set_window_size(window_width, window_height);
+    window.set_window_position(
+        (monitor_width - window_width) / 2,
+        (monitor_height - window_height) / 2,
+    );
     window.set_target_fps(60);
 
     let display_width = window.get_screen_width();

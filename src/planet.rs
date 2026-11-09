@@ -49,6 +49,16 @@ fn fbm(mut p: Vector3) -> f32 {
     value / total * 0.5 + 0.5
 }
 
+fn cloud_mask(position: Vector3, uniforms: &Uniforms) -> f32 {
+    let drift = Vector3::new(uniforms.time * 0.025, 0.0, uniforms.time * 0.012);
+    let field = (noise(position * 6.0 + drift) * 0.65
+        + noise(position * 12.0 + drift * 1.7) * 0.35)
+        * 0.5
+        + 0.5;
+    let edge = 0.95 - uniforms.cloud_coverage * 0.8;
+    smoothstep(edge, edge + 0.14, field) * uniforms.cloud_coverage
+}
+
 fn warp_into_vortex(position: Vector3, center: Vector3) -> Vector3 {
     let axis = center.normalize();
     let radial_component = position.dot(axis);
@@ -65,7 +75,8 @@ fn warp_into_vortex(position: Vector3, center: Vector3) -> Vector3 {
 
 pub fn shade(fragment: &Fragment, uniforms: &Uniforms) -> Vector3 {
     let p = fragment.object_position;
-    let n = fragment.normal.normalize();
+    let geometric_normal = fragment.normal.normalize();
+    let n = geometric_normal;
     // Luz direccional fija: el terminador divide claramente ambos hemisferios.
     let sun_direction = Vector3::new(-0.55, 0.32, 0.77).normalize();
     let sun_facing = n.dot(sun_direction);
@@ -76,7 +87,7 @@ pub fn shade(fragment: &Fragment, uniforms: &Uniforms) -> Vector3 {
         return shade_star(p, n, view, uniforms);
     }
     if uniforms.planet_kind == PlanetKind::GasGiant {
-        return shade_gas_giant(p, n, diffuse, view, uniforms);
+        return shade_gas_giant(p, geometric_normal, n, diffuse, view, uniforms);
     }
     let half_vector = (sun_direction + view).normalize();
     let highlight = n.dot(half_vector).max(0.0);
@@ -109,22 +120,22 @@ pub fn shade(fragment: &Fragment, uniforms: &Uniforms) -> Vector3 {
     let city_lights = smoothstep(0.60, 0.78, noise(p * 72.0 + Vector3::new(13.0, 5.0, 3.0)));
     let lights = land_mask * city_regions * city_lights * night;
 
-    let surface_color = base * (0.035 + diffuse * 0.965)
-        + Vector3::new(0.82, 0.9, 1.0) * (specular * ocean_mask * diffuse * 0.9)
+    // Proyectar la máscara de nubes hacia el suelo siguiendo la dirección de la luz.
+    let sun_tangent = sun_direction - n * sun_facing;
+    let shadow_offset = sun_tangent * (0.08 / sun_facing.max(0.25));
+    let shadow_clouds = cloud_mask(p + shadow_offset, uniforms);
+    let shadow_daylight = smoothstep(0.05, 0.3, sun_facing);
+    let direct_light = diffuse * (1.0 - shadow_clouds * shadow_daylight * 0.58);
+
+    let surface_color = base * (0.035 + direct_light * 0.965)
+        + Vector3::new(0.82, 0.9, 1.0) * (specular * ocean_mask * direct_light * 0.9)
         + Vector3::new(1.0, 0.48, 0.12) * (lights * 1.6)
         + Vector3::new(0.08, 0.16, 0.3) * (rim * 0.35);
 
     // Las nubes usan un desplazamiento propio y se desplazan sobre la superficie fija.
-    let cloud_drift = Vector3::new(uniforms.time * 0.025, 0.0, uniforms.time * 0.012);
-    let cloud_field = (noise(p * 6.0 + cloud_drift) * 0.65
-        + noise(p * 12.0 + cloud_drift * 1.7) * 0.35)
-        * 0.5
-        + 0.5;
-    let cloud_edge = 0.95 - uniforms.cloud_coverage * 0.8;
-    let cloud_mask = smoothstep(cloud_edge, cloud_edge + 0.14, cloud_field)
-        * uniforms.cloud_coverage;
+    let clouds = cloud_mask(p, uniforms);
     let cloud_color = Vector3::new(0.82, 0.87, 0.94) * (0.18 + diffuse * 0.82);
-    let cloud_opacity = cloud_mask * 0.78;
+    let cloud_opacity = clouds * 0.78;
 
     mix(surface_color, cloud_color, cloud_opacity)
 }
@@ -155,6 +166,7 @@ fn shade_star(p: Vector3, n: Vector3, view: Vector3, uniforms: &Uniforms) -> Vec
 
 fn shade_gas_giant(
     p: Vector3,
+    geometric_normal: Vector3,
     n: Vector3,
     diffuse: f32,
     view: Vector3,
@@ -162,7 +174,7 @@ fn shade_gas_giant(
 ) -> Vector3 {
     let drift = Vector3::new(uniforms.time * 0.035, 0.0, uniforms.time * 0.012);
     let storm_center = Vector3::new(0.24, 0.17, 0.96).normalize();
-    let warped_normal = warp_into_vortex(n, storm_center);
+    let warped_normal = warp_into_vortex(geometric_normal, storm_center);
     let warped_position = warped_normal * p.dot(n).max(0.0);
 
     // La deformación afecta las bandas y su ruido, no solo el color de la tormenta.
@@ -179,7 +191,7 @@ fn shade_gas_giant(
     color = mix(color, Vector3::new(1.0, 1.0, 1.0), smoothstep(0.91, 0.98, fine_wave) * 0.45);
 
     // Una tormenta ovalada permanece en coordenadas del planeta mientras las bandas fluyen.
-    let storm_distance = 1.0 - n.dot(storm_center).clamp(-1.0, 1.0);
+    let storm_distance = 1.0 - geometric_normal.dot(storm_center).clamp(-1.0, 1.0);
     let storm = 1.0 - smoothstep(0.025, 0.075, storm_distance);
     let storm_color = Vector3::new(0.369, 0.369, 0.388);
     color = mix(color, storm_color, storm * 0.9);
